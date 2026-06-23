@@ -1,0 +1,203 @@
+name: CD — Build, Push & Deploy
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+
+jobs:
+  # ── Build & Push to ECR (primary) + Docker Hub (backup) ───────────────────
+  build-push:
+    name: Build & Push — ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.tag.outputs.tag }}
+    strategy:
+      matrix:
+        service: [user-service, appointment-service, health-service, document-service, rag-service, rag-worker, frontend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/arogya-prod-github-actions
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set image tag
+        id: tag
+        run: echo "tag=sha-$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+
+      - name: Build image
+        working-directory: ${{ matrix.service }}
+        run: |
+          docker build -t arogya-build/${{ matrix.service }}:${{ steps.tag.outputs.tag }} .
+
+      - name: Push to ECR (primary)
+        run: |
+          docker tag arogya-build/${{ matrix.service }}:${{ steps.tag.outputs.tag }} \
+            ${{ env.ECR_REGISTRY }}/arogya/${{ matrix.service }}:${{ steps.tag.outputs.tag }}
+          docker push ${{ env.ECR_REGISTRY }}/arogya/${{ matrix.service }}:${{ steps.tag.outputs.tag }}
+
+      - name: Push to Docker Hub (backup)
+        run: |
+          docker tag arogya-build/${{ matrix.service }}:${{ steps.tag.outputs.tag }} \
+            ${{ secrets.DOCKERHUB_USERNAME }}/arogya-${{ matrix.service }}:${{ steps.tag.outputs.tag }}
+          docker tag arogya-build/${{ matrix.service }}:${{ steps.tag.outputs.tag }} \
+            ${{ secrets.DOCKERHUB_USERNAME }}/arogya-${{ matrix.service }}:latest
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/arogya-${{ matrix.service }}:${{ steps.tag.outputs.tag }}
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/arogya-${{ matrix.service }}:latest
+
+  # ── Deploy to Dev (auto, no approval) ─────────────────────────────────────
+  deploy-dev:
+    name: Deploy — dev
+    needs: build-push
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/arogya-dev-github-actions
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Get EKS credentials
+        run: aws eks update-kubeconfig --name arogya-dev-eks --region ${{ env.AWS_REGION }}
+
+      - name: Update GitOps repo — dev image tag
+        env:
+          IMAGE_TAG: ${{ needs.build-push.outputs.image_tag }}
+        run: |
+          git clone https://x-access-token:${{ secrets.GITOPS_DEPLOY_KEY }}@github.com/Arogya-capstone/arogya-gitops.git gitops
+          cd gitops
+          sed -i "s/imageTag:.*/imageTag: \"${IMAGE_TAG}\"/" environments/dev/values.yaml
+          git config user.email "cd@arogya.io"
+          git config user.name "Arogya CD"
+          git add environments/dev/values.yaml
+          git commit -m "chore(dev): deploy ${IMAGE_TAG}"
+          git push
+
+      - name: Wait for ArgoCD sync
+        run: |
+          echo "Waiting 60s for ArgoCD to detect and apply changes..."
+          sleep 60
+
+      - name: Verify rollout — dev
+        run: |
+          for svc in user-service appointment-service health-service document-service rag-service frontend; do
+            echo "Checking $svc..."
+            kubectl rollout status deployment/$svc -n arogya-dev --timeout=180s
+          done
+
+      - name: Smoke test — dev
+        run: |
+          DEV_URL=$(kubectl get svc -n arogya-dev -o jsonpath='{.items[?(@.spec.type=="LoadBalancer")].status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
+          if [ -z "$DEV_URL" ]; then
+            echo "No LoadBalancer yet — checking pod health directly"
+            kubectl get pods -n arogya-dev
+          else
+            echo "Running smoke test against $DEV_URL"
+            curl -f "http://${DEV_URL}/health" || (echo "Smoke test failed" && exit 1)
+            echo "Smoke test passed"
+          fi
+
+      - name: Dev deploy summary
+        run: |
+          echo "## ✅ Dev Deploy — ${{ needs.build-push.outputs.image_tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "Pods:" >> $GITHUB_STEP_SUMMARY
+          kubectl get pods -n arogya-dev >> $GITHUB_STEP_SUMMARY
+
+  # ── Deploy to Prod (manual approval required) ─────────────────────────────
+  deploy-prod:
+    name: Deploy — prod
+    needs: [build-push, deploy-dev]
+    runs-on: ubuntu-latest
+    environment: prod     # ← GitHub environment with required reviewer approval
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/arogya-prod-github-actions
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Get EKS credentials
+        run: aws eks update-kubeconfig --name arogya-prod-eks --region ${{ env.AWS_REGION }}
+
+      - name: Update GitOps repo — prod image tag
+        env:
+          IMAGE_TAG: ${{ needs.build-push.outputs.image_tag }}
+        run: |
+          git clone https://x-access-token:${{ secrets.GITOPS_DEPLOY_KEY }}@github.com/Arogya-capstone/arogya-gitops.git gitops
+          cd gitops
+          sed -i "s/imageTag:.*/imageTag: \"${IMAGE_TAG}\"/" environments/prod/values.yaml
+          git config user.email "cd@arogya.io"
+          git config user.name "Arogya CD"
+          git add environments/prod/values.yaml
+          git commit -m "chore(prod): deploy ${IMAGE_TAG}"
+          git push
+
+      - name: Wait for ArgoCD sync
+        run: |
+          echo "Waiting 90s for ArgoCD to apply prod changes..."
+          sleep 90
+
+      - name: Verify rollout — prod
+        run: |
+          for svc in user-service appointment-service health-service document-service rag-service frontend; do
+            echo "Checking $svc..."
+            kubectl rollout status deployment/$svc -n arogya-prod --timeout=300s
+          done
+
+      - name: Smoke test — prod
+        run: |
+          PROD_URL=$(kubectl get svc -n arogya-prod -o jsonpath='{.items[?(@.spec.type=="LoadBalancer")].status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
+          if [ -z "$PROD_URL" ]; then
+            echo "ALB not ready — checking pod health"
+            kubectl get pods -n arogya-prod
+          else
+            echo "Running smoke test against $PROD_URL"
+            curl -f "http://${PROD_URL}/health" || (echo "Smoke test failed" && exit 1)
+            echo "Smoke test passed ✅"
+          fi
+
+      - name: Prod deploy summary
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          echo "## ${STATUS} Prod Deploy — ${{ needs.build-push.outputs.image_tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "Namespace: arogya-prod" >> $GITHUB_STEP_SUMMARY
+          kubectl get pods -n arogya-prod >> $GITHUB_STEP_SUMMARY || true
+
+  # ── Notify on failure ─────────────────────────────────────────────────────
+  notify-failure:
+    name: Notify on Failure
+    needs: [build-push, deploy-dev, deploy-prod]
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post failure summary
+        run: |
+          echo "## ❌ CD Pipeline Failed" >> $GITHUB_STEP_SUMMARY
+          echo "Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "Actor: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "Check the failed job above for details." >> $GITHUB_STEP_SUMMARY
