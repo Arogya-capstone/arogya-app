@@ -123,7 +123,7 @@ jobs:
       - name: Helm lint — prod
         run: helm lint helm/arogya -f environments/prod/values.yaml
 
-  # ── Summary ───────────────────────────────────────────────────────────────
+  # ── Summary & Email Notification ─────────────────────────────────────────
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
@@ -139,3 +139,31 @@ jobs:
           echo "| SAST & Tests | ${{ needs.sast.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Build & Trivy | ${{ needs.build-and-scan.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Helm Lint | ${{ needs.helm-lint.result }} |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Send CI email notification
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "[${{ (contains(needs.secret-scan.result, 'failure') || contains(needs.sast.result, 'failure') || contains(needs.build-and-scan.result, 'failure') || contains(needs.helm-lint.result, 'failure')) && 'FAILED' || 'PASSED' }}] Arogya CI — ${{ github.ref_name }} @ ${{ github.sha }}"
+          to: medilinkhub.team@gmail.com
+          from: Arogya CI <medilinkhub.team@gmail.com>
+          body: |
+            Arogya CI Pipeline Results
+            ──────────────────────────
+            Repo:    ${{ github.repository }}
+            Branch:  ${{ github.ref_name }}
+            Commit:  ${{ github.sha }}
+            Actor:   ${{ github.actor }}
+            Event:   ${{ github.event_name }}
+
+            Job Results:
+              Secret Scan  : ${{ needs.secret-scan.result }}
+              SAST & Tests : ${{ needs.sast.result }}
+              Build & Trivy: ${{ needs.build-and-scan.result }}
+              Helm Lint    : ${{ needs.helm-lint.result }}
+
+            View run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}

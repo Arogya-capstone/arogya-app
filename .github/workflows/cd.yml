@@ -127,6 +127,30 @@ jobs:
           echo "Namespace: arogya-prod" >> $GITHUB_STEP_SUMMARY
           kubectl get pods -n arogya-prod >> $GITHUB_STEP_SUMMARY || true
 
+      - name: Send deploy success email
+        if: success()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "[DEPLOYED] Arogya prod — ${{ needs.build-push.outputs.image_tag }}"
+          to: medilinkhub.team@gmail.com
+          from: Arogya CD <medilinkhub.team@gmail.com>
+          body: |
+            Arogya Production Deploy — SUCCESS
+            ───────────────────────────────────
+            Image Tag: ${{ needs.build-push.outputs.image_tag }}
+            Commit:    ${{ github.sha }}
+            Actor:     ${{ github.actor }}
+            Namespace: arogya-prod
+
+            All rollouts verified. Smoke test passed.
+
+            View run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
   # ── Notify on failure ─────────────────────────────────────────────────────
   notify-failure:
     name: Notify on Failure
@@ -136,7 +160,28 @@ jobs:
     steps:
       - name: Post failure summary
         run: |
-          echo "## ❌ CD Pipeline Failed" >> $GITHUB_STEP_SUMMARY
+          echo "## CD Pipeline Failed" >> $GITHUB_STEP_SUMMARY
           echo "Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
           echo "Actor: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
-          echo "Check the failed job above for details." >> $GITHUB_STEP_SUMMARY
+
+      - name: Send failure email
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "[FAILED] Arogya CD — ${{ github.sha }}"
+          to: medilinkhub.team@gmail.com
+          from: Arogya CD <medilinkhub.team@gmail.com>
+          body: |
+            Arogya CD Pipeline — FAILED
+            ────────────────────────────
+            Commit: ${{ github.sha }}
+            Branch: ${{ github.ref_name }}
+            Actor:  ${{ github.actor }}
+
+            One or more jobs failed. Check the run for details.
+
+            View run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
