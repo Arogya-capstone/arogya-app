@@ -141,6 +141,7 @@ jobs:
           echo "| Helm Lint | ${{ needs.helm-lint.result }} |" >> $GITHUB_STEP_SUMMARY
 
       - name: Send CI email notification
+        continue-on-error: true
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.gmail.com

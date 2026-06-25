@@ -129,6 +129,7 @@ jobs:
 
       - name: Send deploy success email
         if: success()
+        continue-on-error: true
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.gmail.com
@@ -165,6 +166,7 @@ jobs:
           echo "Actor: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
 
       - name: Send failure email
+        continue-on-error: true
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.gmail.com
