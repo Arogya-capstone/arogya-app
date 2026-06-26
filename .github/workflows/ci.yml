@@ -2,9 +2,7 @@ name: CI — Build, Test & Scan
 
 on:
   pull_request:
-    branches: [main, release]
-  push:
-    branches: [main, release]
+    branches: [main]
 
 permissions:
   id-token: write
@@ -154,6 +152,16 @@ jobs:
           echo "| SAST & Tests | ${{ needs.sast.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Build & Trivy | ${{ needs.build-and-scan.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Helm Lint | ${{ needs.helm-lint.result }} |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Fail if any job failed
+        if: |
+          contains(needs.secret-scan.result, 'failure') ||
+          contains(needs.sast.result, 'failure') ||
+          contains(needs.build-and-scan.result, 'failure') ||
+          contains(needs.helm-lint.result, 'failure')
+        run: |
+          echo "One or more CI jobs failed — blocking merge"
+          exit 1
 
       - name: Send CI email notification
         continue-on-error: true
