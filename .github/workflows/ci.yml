@@ -153,6 +153,16 @@ jobs:
           echo "| Build & Trivy | ${{ needs.build-and-scan.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Helm Lint | ${{ needs.helm-lint.result }} |" >> $GITHUB_STEP_SUMMARY
 
+      - name: Fail if any job failed
+        if: |
+          contains(needs.secret-scan.result, 'failure') ||
+          contains(needs.sast.result, 'failure') ||
+          contains(needs.build-and-scan.result, 'failure') ||
+          contains(needs.helm-lint.result, 'failure')
+        run: |
+          echo "One or more CI jobs failed — blocking merge"
+          exit 1
+
       - name: Send CI email notification
         continue-on-error: true
         uses: dawidd6/action-send-mail@v3
