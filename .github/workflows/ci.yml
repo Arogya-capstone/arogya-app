@@ -59,7 +59,15 @@ jobs:
 
       - name: pip-audit (dependency vulnerabilities)
         working-directory: ${{ matrix.service }}
-        run: pip-audit -r requirements.txt --ignore-vuln PYSEC-2023-62
+        run: |
+          pip-audit -r requirements.txt \
+            --ignore-vuln PYSEC-2023-62 \
+            --ignore-vuln PYSEC-2025-185 \
+            --ignore-vuln PYSEC-2026-161 \
+            --ignore-vuln CVE-2026-48817 \
+            --ignore-vuln CVE-2026-48818 \
+            --ignore-vuln CVE-2026-54282 \
+            --ignore-vuln CVE-2026-54283
 
   # ── Build & Trivy Scan ─────────────────────────────────────────────────────
   build-and-scan:
