@@ -391,6 +391,20 @@ async def global_handler(request: Request, exc: Exception):
 async def health():
     return {"status": "ok"}
 
+@app.get("/healthz")
+async def healthz():
+    return {"status": "ok"}
+
+@app.get("/ready")
+async def ready():
+    try:
+        conn = get_pg_conn()
+        conn.cursor().execute("SELECT 1")
+        conn.close()
+        return {"status": "ready"}
+    except Exception:
+        raise HTTPException(status_code=503, detail="Database not ready")
+
 
 class RAGQueryRequest(BaseModel):
     query:      str
