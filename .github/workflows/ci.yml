@@ -2,9 +2,9 @@ name: CI — Build, Test & Scan
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, release]
   push:
-    branches: [main]
+    branches: [main, release]
 
 permissions:
   id-token: write
