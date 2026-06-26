@@ -41,7 +41,7 @@ GUARDRAIL_ID      = os.getenv("BEDROCK_GUARDRAIL_ID", "")
 GUARDRAIL_VERSION = os.getenv("BEDROCK_GUARDRAIL_VERSION", "DRAFT")
 TOP_K             = int(os.getenv("TOP_K_CHUNKS", "5"))
 PUBMED_MAX        = int(os.getenv("PUBMED_MAX_RESULTS", "4"))
-GROQ_MODEL        = os.getenv("GROQ_FALLBACK_MODEL", "llama-3.1-70b-versatile")
+GROQ_MODEL        = os.getenv("GROQ_FALLBACK_MODEL", "mixtral-8x7b-32768")
 GROQ_API_URL      = "https://api.groq.com/openai/v1/chat/completions"
 
 bedrock = boto3.client("bedrock-runtime", region_name=AWS_REGION)
