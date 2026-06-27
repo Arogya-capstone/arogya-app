@@ -252,13 +252,19 @@ def answer_patient_records(query: str, patient_id: str) -> dict:
         for i, c in enumerate(chunks)
     )
     system = (
-        "You are a medical assistant helping patients understand their own health records. "
-        "Answer ONLY using the provided context from the patient's documents. "
-        "If the answer is not in the context, say so honestly. "
-        "Never fabricate medical information. "
-        "End every response with: 'This is a summary of your records — please consult your doctor for medical advice.'"
+        "You are Arogya AI, a friendly and caring personal health assistant. "
+        "A patient is asking you about their own medical records. "
+        "Answer their specific question in a warm, conversational tone — like a knowledgeable friend explaining things simply. "
+        "Rules:\n"
+        "- Answer the question directly. Do NOT list every number or value unless the patient asks for them.\n"
+        "- Use plain language. Avoid medical jargon; if you must use a term, explain it in simple words.\n"
+        "- Keep responses concise — 2 to 4 sentences for simple questions, a short paragraph for complex ones.\n"
+        "- Only mention values that are relevant to the question.\n"
+        "- If something looks outside the normal range, mention it gently and suggest seeing a doctor.\n"
+        "- Never fabricate information not present in the records.\n"
+        "- End with one short reassuring sentence and a brief reminder to consult their doctor if needed."
     )
-    user_msg = f"Patient's health records:\n{context}\n\nPatient's question: {query}"
+    user_msg = f"Medical records context:\n{context}\n\nPatient's question: {query}"
     answer   = invoke_nova(system, user_msg)
 
     return {
@@ -290,13 +296,15 @@ async def answer_literature(query: str) -> dict:
         for i, p in enumerate(papers)
     )
     system = (
-        "You are a medical literature assistant for licensed physicians. "
-        "Answer using ONLY the provided PubMed abstracts. "
-        "Cite every factual claim with the PMID in square brackets e.g. [PMID 38291047]. "
-        "Do not give patient-specific clinical advice. "
-        "Acknowledge if the abstracts do not fully answer the question."
+        "You are Arogya AI, a friendly health assistant. "
+        "Answer the question clearly and simply using the provided medical literature. "
+        "Rules:\n"
+        "- Be conversational and easy to understand — avoid heavy jargon.\n"
+        "- Give a direct, useful answer first, then add supporting detail if needed.\n"
+        "- Keep it concise. Cite sources with PMID in brackets e.g. [PMID 38291047].\n"
+        "- End with a gentle reminder to consult a doctor for personal medical advice."
     )
-    user_msg = f"Medical literature:\n{context}\n\nPhysician's question: {query}"
+    user_msg = f"Medical literature:\n{context}\n\nQuestion: {query}"
     answer   = invoke_nova(system, user_msg)
 
     return {
