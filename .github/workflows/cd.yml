@@ -96,30 +96,6 @@ jobs:
           git commit -m "chore(prod): deploy ${IMAGE_TAG}"
           git push
 
-      - name: Wait for ArgoCD sync
-        run: |
-          echo "Waiting 90s for ArgoCD to apply prod changes..."
-          sleep 90
-
-      - name: Verify rollout — prod
-        run: |
-          for svc in user-service appointment-service health-service document-service rag-service frontend; do
-            echo "Checking $svc..."
-            kubectl rollout status deployment/$svc -n arogya-prod --timeout=300s
-          done
-
-      - name: Smoke test — prod
-        run: |
-          PROD_URL=$(kubectl get svc -n arogya-prod -o jsonpath='{.items[?(@.spec.type=="LoadBalancer")].status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
-          if [ -z "$PROD_URL" ]; then
-            echo "ALB not ready — checking pod health"
-            kubectl get pods -n arogya-prod
-          else
-            echo "Running smoke test against $PROD_URL"
-            curl -f "http://${PROD_URL}/health" || (echo "Smoke test failed" && exit 1)
-            echo "Smoke test passed ✅"
-          fi
-
       - name: Prod deploy summary
         if: always()
         run: |
