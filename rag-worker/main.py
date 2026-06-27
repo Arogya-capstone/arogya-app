@@ -119,6 +119,20 @@ def store_chunks(conn, document_id: str, patient_id: str, chunks: list[str]):
 
 
 # ── SQS consumer loop ─────────────────────────────────────────────────────────
+def update_document_status(document_id: str, status: str):
+    url = get_database_url("document_db").replace("postgresql+asyncpg://", "postgresql://")
+    conn = psycopg2.connect(url + "?sslmode=require")
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE documents SET status = %s WHERE id = %s",
+                (status, document_id),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def process_message(conn, message: dict):
     body = json.loads(message["Body"])
     document_id = body["document_id"]
@@ -130,12 +144,15 @@ def process_message(conn, message: dict):
     text = extract_text(s3_key)
     if not text.strip():
         logger.warning(f"No text extracted from {s3_key} — skipping")
+        update_document_status(document_id, "FAILED")
         return
 
     chunks = chunk_text(text)
     logger.info(f"Split into {len(chunks)} chunks")
 
     store_chunks(conn, document_id, patient_id, chunks)
+    update_document_status(document_id, "COMPLETED")
+    logger.info(f"Document {document_id} marked COMPLETED")
 
 
 def main():
