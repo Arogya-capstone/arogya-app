@@ -12,8 +12,13 @@ def _load_public_key() -> str:
     if env_key:
         return env_key.replace("\\n", "\n")
     key_path = os.getenv("JWT_PUBLIC_KEY_PATH", "keys/public.pem")
-    with open(key_path, "r") as f:
-        return f.read()
+    if os.path.exists(key_path):
+        with open(key_path, "r") as f:
+            return f.read()
+    from aws_utils import get_secret, _PREFIX
+    secret = get_secret(f"{_PREFIX}jwt-public-key")
+    val = secret if isinstance(secret, str) else secret.get("key", next(iter(secret.values())))
+    return val.replace("\\n", "\n")
 
 
 PUBLIC_KEY = _load_public_key()
