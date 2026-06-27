@@ -419,10 +419,13 @@ async def rag_query(data: RAGQueryRequest, user=Depends(get_current_user)):
 
     role = user["role"]
 
-    # ── patient: always their own records only ─────────────────────────────
+    # ── patient: own records first, fall back to literature if no docs uploaded ─
     if role == "patient":
         try:
-            return answer_patient_records(data.query, user["user_id"])
+            result = answer_patient_records(data.query, user["user_id"])
+            if result["chunks_used"] == 0:
+                return await answer_literature(data.query)
+            return result
         except RuntimeError as e:
             raise HTTPException(status_code=503, detail=str(e))
         except Exception as e:
