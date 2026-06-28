@@ -1,5 +1,5 @@
 # Stage 1 — build the Vite app
-FROM node:18-alpine AS builder
+FROM public.ecr.aws/docker/library/node:18-alpine AS builder
 WORKDIR /app
 
 # Build-time URLs injected by CI (empty = use Vite proxy / relative paths in prod)
@@ -21,7 +21,7 @@ COPY . .
 RUN npm run build
 
 # Stage 2 — serve static files with nginx (non-root, port 8080)
-FROM nginxinc/nginx-unprivileged:alpine
+FROM public.ecr.aws/nginx/nginx-unprivileged:alpine
 COPY --from=builder /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 8080
