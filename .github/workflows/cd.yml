@@ -93,7 +93,7 @@ jobs:
           git config user.email "cd@arogya.io"
           git config user.name "Arogya CD"
           git add environments/prod/values.yaml
-          git commit -m "chore(prod): deploy ${IMAGE_TAG}"
+          git diff --staged --quiet && echo "Image tag unchanged, no commit needed" || git commit -m "chore(prod): deploy ${IMAGE_TAG}"
           git push
 
       - name: Prod deploy summary
